@@ -17,7 +17,7 @@
 
 **Ruled out.** Heartbeat: there is nothing to poll between tasks, and every wake-up costs money and produces a draft someone has to read. Goal as the outer loop: a run has a natural end (queued for approval), so there is no outcome to iterate toward. The draft, critic, revise cycle inside a run is goal-shaped and capped; it is specified under stop conditions, not as the loop type.
 
-**Idempotency.** Dedupe by message ID. If the same task ID fires the hook twice, the second run exits immediately and logs "duplicate of run N". The cron sweep checks the queue before drafting.
+**Idempotency.** Dedupe by message ID. If the same task ID fires the hook twice, the second run exits immediately, before any model call, and logs "duplicate of run N". The cron sweep checks the queue before drafting. Implemented: `agent.py` derives the ID from the brief and the ISO week (a real hook would carry the message's own ID), keeps a ledger in `run-output/handled-tasks.json`, and exits on a repeat; `--force` re-runs a handled task on purpose, which the labs need.
 
 ## 2. Goal / definition of done
 
@@ -51,7 +51,7 @@ Every stop holds the last draft in `run-output/` and names its reason. Nothing i
 
 **Scope rule:** state is keyed by project. A run for P-NORTH never reads another project's state, so a confidential roadmap item cannot cross from one project's update into another's.
 
-**Today:** none of this persists. Every run re-reads the fixtures from zero. Adding the per-project state is the plan.
+**Today:** only the handled-task ledger persists (`run-output/handled-tasks.json`, the dedupe key). Last update, last status, and open flags are still re-read from the fixtures each run. Adding the rest of the per-project state is the plan.
 
 ## 5. The five things a loop can lean on
 
@@ -63,7 +63,7 @@ _`state` is always-on. `connectors` only if you already have one wired (e.g. a J
 | **Skills** (reusable capabilities) | Not needed yet: the four steps (pull, draft, critique, queue) are one loop in one file. Candidate later: "draft a status update in house format" as a reusable skill once a second agent needs it. |
 | **Plugins / connectors** (tools & access, optional if you don't have one yet) | Plan, none wired. Today the five read tools return fixtures. The real sources: Jira (activity), GitHub (PRs), Drive (PRD, roadmap), Slack (the inbound task and its requester). Same tool names, swapped source. |
 | **Subagents** (independent check when the loop can't grade itself) | _placeholder → M3 orchestration-map.md_. Today's critic is already an independent check: a separate model call that never saw the drafting prompt. |
-| **State tracking** | As §4: per-project memory of last update, last status, handled task IDs, open flags. Not implemented today. |
+| **State tracking** | As §4: per-project memory of last update, last status, handled task IDs, open flags. Implemented today: the handled-task ledger. The rest is the plan. |
 
 > Context plan (M4) and the hand-off to bounds & evals (M5) come in later modules, you'll add them to their own deliverables then, not here.
 
@@ -83,6 +83,7 @@ The spec is a design doc and the agent does not read it, so the build was change
 | Escalate: unknown project | Left to the model | `project_not_found` from `get_project` escalates deterministically, no draft |
 | Escalate: Sev-1 or launch_hold | Left to the prompt | A `launch_hold` flag or a `sev-1` issue injects a non-negotiable rule: never Green, escalate the go/no-go naming the flag (agent line row 5a) |
 | Definition of done | DONE format did not ask for status evidence or PRD tracing | Added to the finish instructions in `CORTEX_SYSTEM` |
+| Idempotency (§1) | Nothing stopped the same task from producing two drafts | Task ID from the brief plus ISO week, ledger in `run-output/handled-tasks.json`, duplicate exits before any model call, `--force` to re-run deliberately |
 
 One correction found by running: the first happy-path run after the edits halted on "repeated action" before any revision, because the rejection message ("Fix it or escalate") invited the model to re-pull data. The message now says the source data has not changed and to revise from what it has. The exit was right; the prompt was inviting the wrong move.
 
@@ -90,6 +91,7 @@ One correction found by running: the first happy-path run after the edits halted
 
 - `missing-data`: `get_project(P-HALO)` returned `project_not_found`; escalated at step 1, nothing drafted, $0.0002. Before the edits this case ran the full loop.
 - `happy`: five pulls in step 1, three stories queued in step 2, draft (Green) in step 3, critic rejected, revision (Yellow) in step 4 with no re-pull, critic rejected, revision cap hit, draft held, $0.0026. Four steps instead of eight; the wasted re-pulls are gone.
+- `missing-data` three times in a row: run 1 escalated ($0.0002); run 2 exited as `DUPLICATE ... already handled by run 1`, no model call, $0; run 3 with `--force` ran again.
 - Not yet observed: a `pass` from the critic. It rejected every draft in every run so far, on reasons that change between runs. The loop now converges on the critic's verdict; whether the critic's verdict is stable is a separate question.
 
 Verbatim traces: course archive, `2026-09-16/aaiac-m2-part-b-run-traces.md`.

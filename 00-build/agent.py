@@ -25,6 +25,8 @@ client) so a grader can see the machinery. Keep the bounds explicit if you rewor
 
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
 import json
 import os
 import sys
@@ -104,6 +106,36 @@ class Bounds:
 OUTPUT_DIR = Path(__file__).parent / "run-output"
 
 
+HANDLED_PATH = OUTPUT_DIR / "handled-tasks.json"
+
+
+def task_id(task: dict) -> str:
+    """Message ID for dedupe. A real hook carries the message's own ID; the fixtures
+    do not, so hash the brief and the ISO week (the same weekly ask in a new week
+    is a new task)."""
+    week = dt.date.today().strftime("%G-W%V")
+    digest = hashlib.sha256(task["body"].encode()).hexdigest()[:12]
+    return f"{task['which']}-{week}-{digest}"
+
+
+def already_handled(tid: str) -> dict | None:
+    """Loop spec §1, idempotency: the same message must not produce two drafts."""
+    if HANDLED_PATH.exists():
+        return json.loads(HANDLED_PATH.read_text()).get(tid)
+    return None
+
+
+def mark_handled(tid: str, which: str) -> int:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    handled = json.loads(HANDLED_PATH.read_text()) if HANDLED_PATH.exists() else {}
+    run_no = sum(len(v["runs"]) for v in handled.values()) + 1
+    entry = handled.setdefault(tid, {"fixture": which, "runs": []})
+    entry["runs"].append({"run": run_no,
+                          "at": dt.datetime.now().isoformat(timespec="seconds")})
+    HANDLED_PATH.write_text(json.dumps(handled, indent=2))
+    return run_no
+
+
 def banner(text: str) -> None:
     print(f"\n{'=' * 64}\n{text}\n{'=' * 64}")
 
@@ -137,7 +169,7 @@ def emit_deliverable(which: str, draft: str, *, accepted: bool,
               f"(for your review, nothing was posted)")
 
 
-def run(which: str = "happy") -> None:
+def run(which: str = "happy", force: bool = False) -> None:
     client = OpenAI()
     bounds = Bounds()
     task = tools.get_task(which)
@@ -145,7 +177,19 @@ def run(which: str = "happy") -> None:
         print(task)
         return
 
-    banner(f"CORTEX RUN, fixture: task-{which}  (auto-queue cap {MAX_QUEUE_ITEMS} items)")
+    # Loop spec §1, idempotency: dedupe by message ID before spending anything.
+    # `--force` re-runs a handled task on purpose (labs re-run fixtures all week).
+    tid = task_id(task)
+    prior = already_handled(tid)
+    if prior and not force:
+        last = prior["runs"][-1]
+        banner(f"DUPLICATE, task {tid} already handled by run {last['run']} "
+               f"at {last['at']}. Not drafting again. (use --force to re-run)")
+        return
+    run_no = mark_handled(tid, which)
+
+    banner(f"CORTEX RUN {run_no}, fixture: task-{which}  (auto-queue cap {MAX_QUEUE_ITEMS} items)")
+    print(f"task id: {tid}")
     print(task["body"])
 
     messages = [
@@ -277,4 +321,5 @@ def run(which: str = "happy") -> None:
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "happy")
+    argv = [a for a in sys.argv[1:] if a != "--force"]
+    run(argv[0] if argv else "happy", force="--force" in sys.argv)
