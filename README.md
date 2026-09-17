@@ -2,7 +2,7 @@
 
 > My final project for Product School's **Agentic Loops for PMs** certification. A chief-of-staff agent that turns raw inputs (project state, GitHub/Jira activity, roadmap, past updates) into finished PM work, a leadership status update and a proposed backlog for a human to clear, built loop-first, bounded, grown into a fleet, and shipped up the Trust Ladder.
 
-This is a **template repo**. Click **Use this template → Create a new repository**, name it `pm-os-agent` (or your own agent's name), and fill in one folder per module as you go.
+Created from the course template (`run-your-ai-agent-team-template`). One folder per module, filled during that module's lab. Cohort: Sep 14 to 30, 2026.
 
 ---
 
@@ -54,21 +54,32 @@ Stop and ask me at every decision."* If your assistant can't read files (plain C
 
 | # | Deliverable | Module | Status | File |
 |---|---|---|---|---|
-| 1 | **Working agent demo** (real run screenshots; link optional) | Built across labs | ☐ | `06-autonomy/prototype.md` |
-| 2 | **Loop Spec** | M2 | ☐ | `02-loop-design/loop-spec.md` |
+| 1 | **Working agent demo** (real run screenshots; link optional) | Built across labs | ◐ 1 of 6 screenshots (M2) | `06-autonomy/prototype.md` |
+| 2 | **Loop Spec** | M2 | ✅ | `02-loop-design/loop-spec.md` |
 | 3 | **Orchestration Map** | M3 | ☐ | `03-orchestration/orchestration-map.md` |
 | 4 | **Insights: build process** | M6 | ☐ | `06-autonomy/build-insights.md` |
 | 5 | **Bounds, trust & autonomy strategy** | M6 | ☐ | `06-autonomy/production-and-autonomy.md` |
 
+## Progress
+
+| Module | Artifact | Status |
+|---|---|---|
+| M1 The Agent Line | `01-agent-line/agent-line-map.md`: 11 decisions scored on reversibility, blast radius, measurability; 4 below, 3 HITL, 4 above; pressure-tested | ✅ committed |
+| M2 Loop Engineering | `02-loop-design/loop-spec.md`: hook with cron backup, definition of done, 11 detectable stop conditions, state and components; build edited to match and re-run | ✅ committed |
+| M3 Orchestration | `03-orchestration/orchestration-map.md` | ☐ |
+| M4 Context & Memory | `04-memory-context/memory-and-context.md` | ☐ |
+| M5 Bounds & Evals | `05-bounds-evals/bounds-and-evals.md` | ☐ |
+| M6 Autonomy | `06-autonomy/` | ☐ |
+
 ## The agent in one sentence
 
-_What does your agent do, for whom, and where is the agent line, what does it decide vs. what stays human?_
+Cortex is a chief-of-staff for a product team: it pulls project state and activity, drafts the weekly leadership status update, flags at-risk items, and queues a capped batch of backlog stories for approval. It decides what to draft and what to flag. A human sets the status and commitment level, chooses what to escalate, and owns every post. The full line, scored and pressure-tested, is in `01-agent-line/agent-line-map.md`.
 
 ## Build & demo
 
-- **How you built it:** _which coding agent (Claude Code / Cursor / Codex) you directed, start in `00-build/`_
+- **How you built it:** Claude Code, directed from each module's `LAB.md`. The starter in `00-build/` runs on Python 3.14 in a local venv against the OpenAI API (`gpt-4o-mini`). Build changes so far: the loop's exits in `agent.py` and the finish instructions in `prompts.py` were edited in M2 to match the Loop Spec.
 - **Demo link:** _[optional shareable URL]_
-- **Run screenshots:** _required, collected M2 to M6 in `06-autonomy/prototype.md`_
+- **Run screenshots:** 1 of 6 so far, in `06-autonomy/screenshots/`, linked from `06-autonomy/prototype.md`
 
 ## Where it sits on the Trust Ladder
 
