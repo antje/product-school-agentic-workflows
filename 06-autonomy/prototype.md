@@ -21,7 +21,7 @@ Real screenshots of *your* Cortex running. These are the `00-build/CORTEX-ANATOM
 
 | # | Screenshot | What it shows | From |
 |---|---|---|---|
-| 1 | _[img]_ | happy-path run: a real drafted update + the HITL checkpoint (queued, not posted) | M2 |
+| 1 | [m2-happy.png](screenshots/m2-happy.png) (full run) · [m2-happy-stop.png](screenshots/m2-happy-stop.png) (the revision, the revision cap firing, the held draft) · [m2-missing.png](screenshots/m2-missing.png) (unknown project, escalated at step 1, nothing drafted) | happy-path run: a real drafted update + the HITL checkpoint (queued, not posted). 2026-09-16, after the M2 loop-spec build changes. Images are rendered from the verbatim terminal output of `python agent.py happy` and `python agent.py missing-data`; the raw traces are in the commit history and the course archive. Note: the critic rejected both drafts, so the run ends at the revision cap with the draft held, not at a critic pass. | M2 |
 | 2 | _[img]_ | the critic rejecting a bad draft (revise/block) | M3 |
 | 3 | _[img]_ | a grounded update citing pulled activity + a caught hallucination | M4 |
 | 4 | _[img]_ | jailbreak refused + escalated | M5 |
