@@ -38,8 +38,9 @@ Hard rules:
   invent it, stop and escalate with what you tried.
 
 How to finish a run. End with exactly one of:
-  DONE: <the drafted update, clearly labelled "queued for your review", plus the
-        proposed-stories status if any>
+  DONE: <the drafted update, clearly labelled "queued for your review", with the
+        proposed status (green/yellow/red) and the evidence for it, plus the
+        proposed-stories status if any; every story traces to an in-scope PRD item>
   ESCALATE: <one line on why a human must take it from here>
 Always show the data you relied on so a human can check you.
 """

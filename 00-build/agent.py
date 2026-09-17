@@ -155,6 +155,8 @@ def run(which: str = "happy") -> None:
     source_log: list[str] = [task["body"]]
     revisions = 0
     last_draft = ""
+    seen_calls: set[str] = set()   # (tool, args) already made this run: a repeat is "stuck"
+    tool_errors = 0                # consecutive tool errors: three in a row is "stuck"
 
     for step in range(1, MAX_ITERATIONS + 1):
         if bounds.over_cap():
@@ -174,12 +176,58 @@ def run(which: str = "happy") -> None:
             for call in msg.tool_calls:
                 fn = call.function.name
                 args = json.loads(call.function.arguments or "{}")
+
+                # Loop spec §3, stuck: the same tool with the same arguments twice in
+                # one run brings no new information. Stop instead of spinning.
+                key = f"{fn}({json.dumps(args, sort_keys=True)})"
+                if key in seen_calls:
+                    reason = f"repeated action, no new information: {key}"
+                    banner(f"STUCK, {reason}. Halting and escalating to a human. "
+                           f"Run cost ≈ ${bounds.cost:.4f}")
+                    emit_deliverable(which, last_draft, accepted=False,
+                                     reason=reason, cost=bounds.cost)
+                    return
+                seen_calls.add(key)
+
                 result = tools.TOOLS[fn](**args)
                 source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
                 print(f"\n[step {step}] TOOL {fn}({args})")
                 print(f"          -> {json.dumps(result)[:300]}")
                 messages.append({"role": "tool", "tool_call_id": call.id,
                                  "content": json.dumps(result)})
+
+                # Loop spec §3, escalate: the brief names a project that does not
+                # exist. No draft, hand it back with what was tried.
+                if fn == "get_project" and result.get("error") == "project_not_found":
+                    reason = f"unknown project {args.get('project_id')}, nothing drafted"
+                    banner(f"ESCALATE, {reason}. Run cost ≈ ${bounds.cost:.4f}")
+                    emit_deliverable(which, "", accepted=False,
+                                     reason=reason, cost=bounds.cost)
+                    return
+
+                # Loop spec §3, stuck: three consecutive tool errors.
+                tool_errors = tool_errors + 1 if "error" in result else 0
+                if tool_errors >= 3:
+                    reason = "three consecutive tool errors"
+                    banner(f"STUCK, {reason}. Halting and escalating to a human. "
+                           f"Run cost ≈ ${bounds.cost:.4f}")
+                    emit_deliverable(which, last_draft, accepted=False,
+                                     reason=reason, cost=bounds.cost)
+                    return
+
+                # Agent line row 5a, a rule not a judgment: an open Sev-1 or a
+                # launch_hold flag means the status may never be Green and the
+                # go/no-go is escalated with the flag named.
+                if fn == "get_project" and "error" not in result:
+                    gates = [f for f in result.get("flags", []) if f == "launch_hold"]
+                    gates += [a["id"] + " (sev-1)" for a in result.get("activity", [])
+                              if a.get("severity") == "sev-1"]
+                    if gates:
+                        print(f"          !! gate flags on {args.get('project_id')}: {gates}")
+                        messages.append({"role": "user", "content":
+                            f"RULE (not negotiable): project {args.get('project_id')} has "
+                            f"{', '.join(gates)} open. The status may NOT be Green. Draft the "
+                            f"update, name the flag, and ESCALATE the go/no-go to a human."})
             continue
 
         # No tool calls => Cortex produced a proposed output. Validate it.
@@ -202,20 +250,24 @@ def run(which: str = "happy") -> None:
                              reason="validator passed", cost=bounds.cost)
             return
 
+        # Loop spec §3, stuck: the critic has rejected MAX_REVISIONS drafts. Stop
+        # now, no further tool calls, and hold the last draft for a human.
+        revisions += 1
         if revisions >= MAX_REVISIONS:
-            reason = f"validator rejected {MAX_REVISIONS}x (revision cap)"
+            reason = f"validator rejected {revisions}x (revision cap)"
             banner(f"REVISION CAP hit ({MAX_REVISIONS}). Escalating to a human "
                    f"instead of looping. Run cost ≈ ${bounds.cost:.4f}")
             emit_deliverable(which, last_draft, accepted=False,
                              reason=reason, cost=bounds.cost)
             return
 
-        revisions += 1
         print(f"\n-> critic rejected; revision {revisions}/{MAX_REVISIONS}")
         messages.append(msg)
         messages.append({"role": "user", "content":
                          "A validator rejected that for these reasons: "
-                         f"{verdict['reasons']}. Fix it or escalate."})
+                         f"{verdict['reasons']}. The source data has not changed: do "
+                         "not call tools again, revise from what you already have, or "
+                         "escalate."})
 
     banner(f"MAX ITERATIONS ({MAX_ITERATIONS}) reached without finishing. "
            f"Escalating. Run cost ≈ ${bounds.cost:.4f}")
