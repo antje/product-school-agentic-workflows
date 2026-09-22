@@ -23,7 +23,7 @@
 
 One run produces one project's status update, grounded in this week's pulled activity, with a proposed status and its evidence, plus a story batch traced to in-scope PRD items and within cap. Both sit in the approval queue. Nothing is posted. The critic has passed the draft once.
 
-The draft, critic, revise cycle inside a run is a small goal loop. Its validation is the critic: a separate model call that never saw the drafting prompt, so Cortex does not grade itself. It is capped at two revisions.
+The draft, critic, revise cycle inside a run is a small goal loop. Its validation is the critic: a separate model call that never saw the drafting prompt, so Cortex does not grade itself. It is capped at two rejections: after the second the run stops, so a draft is revised at most once.
 
 ## 3. Stop conditions
 
@@ -62,7 +62,7 @@ _`state` is always-on. `connectors` only if you already have one wired (e.g. a J
 | **Work tree** (isolated workspace per run, a git worktree) | Not needed yet: a run writes one file to `run-output/` and touches no shared code or data. Needed once Cortex edits anything two runs could collide on. |
 | **Skills** (reusable capabilities) | Not needed yet: the four steps (pull, draft, critique, queue) are one loop in one file. Candidate later: "draft a status update in house format" as a reusable skill once a second agent needs it. |
 | **Plugins / connectors** (tools & access, optional if you don't have one yet) | Plan, none wired. Today the five read tools return fixtures. The real sources: Jira (activity), GitHub (PRs), Drive (PRD, roadmap), Slack (the inbound task and its requester). Same tool names, swapped source. |
-| **Subagents** (independent check when the loop can't grade itself) | _placeholder → M3 orchestration-map.md_. Today's critic is already an independent check: a separate model call that never saw the drafting prompt. |
+| **Subagents** (independent check when the loop can't grade itself) | The critic: a separate model call that never saw the drafting prompt. Its five checks, fail action and revision cap are defined in `03-orchestration/orchestration-map.md` (refined in Module 3). |
 | **State tracking** | As §4: per-project memory of last update, last status, handled task IDs, open flags. Implemented today: the handled-task ledger. The rest is the plan. |
 
 > Context plan (M4) and the hand-off to bounds & evals (M5) come in later modules, you'll add them to their own deliverables then, not here.
@@ -92,7 +92,7 @@ One correction found by running: the first happy-path run after the edits halted
 - `missing-data`: `get_project(P-HALO)` returned `project_not_found`; escalated at step 1, nothing drafted, $0.0002. Before the edits this case ran the full loop.
 - `happy`: five pulls in step 1, three stories queued in step 2, draft (Green) in step 3, critic rejected, revision (Yellow) in step 4 with no re-pull, critic rejected, revision cap hit, draft held, $0.0026. Four steps instead of eight; the wasted re-pulls are gone.
 - `missing-data` three times in a row: run 1 escalated ($0.0002); run 2 exited as `DUPLICATE ... already handled by run 1`, no model call, $0; run 3 with `--force` ran again.
-- Not yet observed: a `pass` from the critic. It rejected every draft in every run so far, on reasons that change between runs. The loop now converges on the critic's verdict; whether the critic's verdict is stable is a separate question.
+- Not yet observed at the time of writing: a `pass` from the critic. It rejected every draft in every run so far, on reasons that change between runs. The loop now converges on the critic's verdict; whether the critic's verdict is stable is a separate question. *Refined in Module 3:* with the critic rewritten to five checks and a pass rule, the success exit fired on the first clean run (2026-09-21, `HITL CHECKPOINT` reached).
 
 Verbatim traces: course archive, `2026-09-16/aaiac-m2-part-b-run-traces.md`.
 

@@ -26,7 +26,7 @@ Eleven rows rather than the starter's eight. The starter's "post an update / app
 
 ## Agent anatomy (sketch)
 
-- **Model:** a fast default (`gpt-4o-mini`, set by `CORTEX_MODEL`) for retrieval, drafting and the critic. Escalate to a frontier model only for the two judgment calls that feed a human decision: the proposed status with its evidence (row 4) and the escalation candidates (row 6). Drafting does not need the stronger model.
+- **Model:** a fast default (`gpt-4o-mini`, set by `CORTEX_MODEL`) for retrieval, drafting and the critic. Escalate to a frontier model only for the two judgment calls that feed a human decision: the proposed status with its evidence (row 4) and the escalation candidates (row 6). Drafting does not need the stronger model. *Refined in Module 3:* the critic is a judgment slice too and now runs on the stronger model (`CORTEX_CRITIC_MODEL`).
 - **Tools:** read only: `get_project`, `get_activity`, `search_past_updates`, `get_roadmap`, `get_norms`. Write, queue only: `propose_stories`, capped and queued for approval. Deliberately absent: post an update, create or merge a ticket or PR, commit a date. The tool list, not the prompt, enforces the line at rows 8 and 9.
 - **Memory:** persists across runs: roadmap, decision log, team norms, past updates (the fixtures Cortex reads). Purged after each run: the drafts in `run-output/`, the tool results, the critic's verdicts.
 - **Loop:** _placeholder, defined in M2 loop-spec.md_

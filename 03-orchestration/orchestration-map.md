@@ -19,7 +19,7 @@
 | Independent validator | **Yes** | In every run the drafter called the same data Green, then Yellow, then Green, and ended each draft with `DONE` while the critic disagreed. The author cannot judge its own status call. Only a check that never saw the drafting prompt catches that. |
 | Context-window pressure | No | A full run is about 10k tokens; the fixtures fit many times over. |
 
-**Verdict:** split for exactly one reason, the independent validator. Cortex stays a single agent with one subagent, the critic, which is a separate model call with its own context. Not a fleet.
+**Verdict:** split for exactly one reason, the independent validator. Cortex stays a single agent with one subagent, the critic, a separate model call with its own context.
 
 ## 2. Topology
 
@@ -47,16 +47,16 @@
 | Critic | check the draft against five rules, return pass or fail with the failed check named | one call per draft, no loop of its own |
 | PM (human) | set status and commitment level, approve stories, own every post | above the agent line, not a loop |
 
-No research subagent, no reader subagent: the five read tools do that work, and a tool is cheaper than an agent.
+There is no research or reader subagent. The five read tools do that work, at a fraction of an agent's cost.
 
 ## 4. Communication & hand-offs
 
-In-process, plain structured text. No MCP or A2A: both agents live in one process, so a shared envelope buys nothing today. Noted for when a critic runs elsewhere.
+In-process, plain structured text. No MCP or A2A: both agents live in one process, and a shared envelope would matter only if the critic ran in another one.
 
 | From | To | What passes | Form |
 |---|---|---|---|
 | Cortex | Critic | the proposed output plus the full source log (every tool call and its result) | text |
-| Critic | Cortex | `{"verdict": "pass" or "fail", "reasons": [...]}`, each reason naming the failed check and the offending text | JSON |
+| Critic | Cortex | `{"verdict": "pass" or "fail", "failed_checks": [...], "reasons": [...]}`, each reason naming the failed check and quoting the offending text | JSON |
 | Critic | PM | the held draft plus the critic's reasons, when the run stops | `run-output/status-update-<task>.md` |
 | Cortex | PM | the passing draft and the queued stories | the review queue |
 
@@ -78,9 +78,9 @@ One subagent, the critic. A separate model call with its own system prompt that 
 
 **Fail action, tiered:**
 - Checks 1, 2, 3, 5 fail: **revise**. The draft goes back to Cortex with the failed check and the offending text named. Cortex fixes it from the data it already has; no re-pull.
-- Check 4 fails: **escalate** at once, no revision. A commitment or a leak is above the agent line; a second draft is not the fix, a human is.
+- Check 4 fails: **escalate** at once, no revision. A commitment or a leak is above the agent line, so a human takes it, not a second draft.
 
-**Revision cap:** 2. After the second rejection the run stops, the last draft is held in `run-output/`, and the PM gets the critic's reasons. Enforced in `agent.py` since M2.
+**Revision cap:** 2 rejections, so at most one revision. After the second rejection the run stops, the last draft is held in `run-output/`, and the PM gets the critic's reasons. Enforced in `agent.py` since M2.
 
 **Pass action:** advance to the PM review checkpoint, queued. Never sent.
 
@@ -114,10 +114,10 @@ The validator adds one `gpt-4o` call per draft, about $0.005 and 3 to 4 seconds 
 |---|---|
 | 5, the checks | `CRITIC_SYSTEM` rewritten: five yes/no checks, an explicit pass rule, "judge each check on its own", and a JSON shape with `failed_checks` so the fail action is decided in code |
 | 5, tiered fail action | `agent.py`: a failed check 4 escalates at once with no revision; other failures revise, cap 2 (from M2); the rejection message names the failed check numbers |
-| 3, roster | `CORTEX_CRITIC_MODEL` (default: the drafter's model) so the critic can run on a stronger model; set to `gpt-4o` in `.env.example`. Own price variables so the run cost counts it honestly |
+| 3, roster | `CORTEX_CRITIC_MODEL` (default: the drafter's model) so the critic can run on a stronger model; set to `gpt-4o` in `.env.example`, with its own price variables so the run cost includes it at the right rate |
 | 4, evidence | `CORTEX_SABOTAGE=1`, a documented demo switch that tells the drafter to include a fake GA date and a fake 58% activation rate, so the critic has a bad draft to catch. Off by default; the trace prints a banner when it is on |
 
-**What the runs showed.** Before this module the critic had never passed a draft: six fuzzy checks, no pass rule, and a status colour it could always call unsupported. With five checks and a pass rule, a clean draft passed on the first try (the first `HITL CHECKPOINT` in this build). On the sabotaged draft the `gpt-4o-mini` critic got the verdict right but the bookkeeping wrong: it filed the GA date under check 3 and missed the 58%. The `gpt-4o` critic caught both, quoting each line with the real value, and produced one false reason (it called a normal-severity issue a Sev-1). The verdict and the escalation were correct in every run; the reasons are what the stronger model buys, and the reasons are what the PM reads at an escalation.
+**What the runs showed.** Before this module the critic had never passed a draft: six fuzzy checks, no pass rule, and a status colour it could always call unsupported. With five checks and a pass rule, a clean draft passed on the first try (the first `HITL CHECKPOINT` in this build). On the sabotaged draft the `gpt-4o-mini` critic got the verdict right but the bookkeeping wrong: it filed the GA date under check 3 and missed the 58%. The `gpt-4o` critic caught both, quoting each line with the real value, and produced one false reason (it called a normal-severity issue a Sev-1). The verdict and the escalation were correct in every run. The stronger model buys better reasons, and reasons are what the PM reads at an escalation.
 
 **Independence, confirmed.** `critic.py` builds its own two-message context: its system prompt, then the source data and the proposed output. It never receives Cortex's messages, and Cortex only receives the verdict JSON.
 
