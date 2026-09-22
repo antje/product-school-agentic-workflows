@@ -36,7 +36,7 @@ from openai import OpenAI
 
 import tools
 from critic import review
-from prompts import CORTEX_SYSTEM
+from prompts import CORTEX_SYSTEM, SABOTAGE_SUFFIX
 
 try:  # load .env if python-dotenv is installed; harmless if it isn't
     from dotenv import load_dotenv
@@ -47,6 +47,8 @@ except ImportError:
 
 # --- Bounds (your M5 deliverable: tune these and justify them) ----------------
 MODEL = os.environ.get("CORTEX_MODEL", "gpt-4o-mini")
+# The critic is a judgment slice; it may run on a stronger model than the drafter.
+CRITIC_MODEL = os.environ.get("CORTEX_CRITIC_MODEL", MODEL)
 MAX_ITERATIONS = int(os.environ.get("CORTEX_MAX_ITERATIONS", "8"))
 MAX_REVISIONS = int(os.environ.get("CORTEX_MAX_REVISIONS", "2"))
 COST_CAP_USD = float(os.environ.get("CORTEX_COST_CAP_USD", "0.50"))
@@ -54,6 +56,9 @@ MAX_QUEUE_ITEMS = int(os.environ.get("CORTEX_MAX_QUEUE_ITEMS", "10"))
 # Rough $ per 1M tokens for your chosen model, set to match its pricing.
 PRICE_IN = float(os.environ.get("CORTEX_PRICE_IN_PER_M", "0.15"))
 PRICE_OUT = float(os.environ.get("CORTEX_PRICE_OUT_PER_M", "0.60"))
+# The critic may run on a different model, so it gets its own prices (default: same).
+CRITIC_PRICE_IN = float(os.environ.get("CORTEX_CRITIC_PRICE_IN_PER_M", str(PRICE_IN)))
+CRITIC_PRICE_OUT = float(os.environ.get("CORTEX_CRITIC_PRICE_OUT_PER_M", str(PRICE_OUT)))
 
 TOOL_SCHEMAS = [
     {"type": "function", "function": {
@@ -188,12 +193,18 @@ def run(which: str = "happy", force: bool = False) -> None:
         return
     run_no = mark_handled(tid, which)
 
-    banner(f"CORTEX RUN {run_no}, fixture: task-{which}  (auto-queue cap {MAX_QUEUE_ITEMS} items)")
+    banner(f"CORTEX RUN {run_no}, fixture: task-{which}  (drafter {MODEL}, critic {CRITIC_MODEL}, auto-queue cap {MAX_QUEUE_ITEMS} items)")
     print(f"task id: {tid}")
     print(task["body"])
 
+    system = CORTEX_SYSTEM
+    if os.environ.get("CORTEX_SABOTAGE") == "1":
+        banner("SABOTAGE ON (demo): the drafter is told to invent a date and a metric "
+               "so the critic has something to catch. Never on by default.")
+        system += SABOTAGE_SUFFIX
+
     messages = [
-        {"role": "system", "content": CORTEX_SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": f"PM task brief:\n\n{task['body']}"},
     ]
     source_log: list[str] = [task["body"]]
@@ -280,10 +291,12 @@ def run(which: str = "happy", force: bool = False) -> None:
         print(f"\n[step {step}] PROPOSED OUTPUT:\n{proposed}")
 
         banner("CRITIC, independent validation")
-        verdict = review(client, MODEL, proposed, "\n".join(source_log))
+        verdict = review(client, CRITIC_MODEL, proposed, "\n".join(source_log))
         # Estimate critic spend too.
-        bounds.cost += (verdict["_usage"]["prompt"] * PRICE_IN
-                        + verdict["_usage"]["completion"] * PRICE_OUT) / 1_000_000
+        bounds.cost += (verdict["_usage"]["prompt"] * CRITIC_PRICE_IN
+                        + verdict["_usage"]["completion"] * CRITIC_PRICE_OUT) / 1_000_000
+        print(f"critic tokens: {verdict['_usage']['prompt']} in / "
+              f"{verdict['_usage']['completion']} out")
         print(json.dumps({k: v for k, v in verdict.items() if k != "_usage"}, indent=2))
 
         if verdict["verdict"] == "pass":
@@ -292,6 +305,17 @@ def run(which: str = "happy", force: bool = False) -> None:
                    f"Run cost ≈ ${bounds.cost:.4f}")
             emit_deliverable(which, proposed, accepted=True,
                              reason="validator passed", cost=bounds.cost)
+            return
+
+        # Orchestration map, field 5, tiered fail action: a failed check 4 (a
+        # commitment or a leak) is above the agent line. No revision, escalate now.
+        failed = verdict.get("failed_checks", [])
+        if 4 in failed:
+            reason = f"critic failed check 4 (commitment or leak): {verdict['reasons']}"
+            banner(f"ESCALATE, critic failed check 4 (commitment or leak). No revision, "
+                   f"a human takes it from here. Run cost ≈ ${bounds.cost:.4f}")
+            emit_deliverable(which, last_draft, accepted=False,
+                             reason=reason, cost=bounds.cost)
             return
 
         # Loop spec §3, stuck: the critic has rejected MAX_REVISIONS drafts. Stop
@@ -308,7 +332,7 @@ def run(which: str = "happy", force: bool = False) -> None:
         print(f"\n-> critic rejected; revision {revisions}/{MAX_REVISIONS}")
         messages.append(msg)
         messages.append({"role": "user", "content":
-                         "A validator rejected that for these reasons: "
+                         f"A validator failed checks {failed} for these reasons: "
                          f"{verdict['reasons']}. The source data has not changed: do "
                          "not call tools again, revise from what you already have, or "
                          "escalate."})

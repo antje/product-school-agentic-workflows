@@ -22,7 +22,7 @@ Real screenshots of *your* Cortex running. These are the `00-build/CORTEX-ANATOM
 | # | Screenshot | What it shows | From |
 |---|---|---|---|
 | 1 | [m2-happy.png](screenshots/m2-happy.png) (full run) · [m2-happy-stop.png](screenshots/m2-happy-stop.png) (the revision, the revision cap firing, the held draft) · [m2-missing.png](screenshots/m2-missing.png) (unknown project, escalated at step 1, nothing drafted) | happy-path run: a real drafted update + the HITL checkpoint (queued, not posted). 2026-09-16, after the M2 loop-spec build changes. Images are rendered from the verbatim terminal output of `python agent.py happy` and `python agent.py missing-data`; the raw traces are in the commit history and the course archive. Note: the critic rejected both drafts, so the run ends at the revision cap with the draft held, not at a critic pass. | M2 |
-| 2 | _[img]_ | the critic rejecting a bad draft (revise/block) | M3 |
+| 2 | [m3-critic-reject.png](screenshots/m3-critic-reject.png) · [m3-critic-pass.png](screenshots/m3-critic-pass.png) | the critic rejecting a bad draft (revise/block). 2026-09-21: the drafter was told (demo switch `CORTEX_SABOTAGE=1`) to state a firm GA date and a 58% activation rate not in the data; the critic (`gpt-4o`, own context) failed checks 2 and 4, quoting both lines, and the run escalated at once with no revision, the fail-action for a commitment. The pass image is the same critic passing a clean draft on the first try, the first `HITL CHECKPOINT` reached in this build. Rendered from the verbatim trace. | M3 |
 | 3 | _[img]_ | a grounded update citing pulled activity + a caught hallucination | M4 |
 | 4 | _[img]_ | jailbreak refused + escalated | M5 |
 | 5 | _[img]_ | an iteration/cost/queue bound halting a runaway | M5 |
