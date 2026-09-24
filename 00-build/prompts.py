@@ -53,8 +53,13 @@ whether you would have written it differently are NOT reasons to fail.
 
 1. PROJECT AND IDS MATCH. Every PR or issue ID and the project name in the draft appear
    in the pulled data.
-2. EVERY NUMBER IS TRACEABLE. Each figure, date, percentage, and metric in the draft
-   appears verbatim in a tool result. No invented or rounded numbers.
+2. EVERY NUMBER AND EVERY PROGRESS CLAIM IS TRACEABLE. Each figure, date, percentage,
+   and metric in the draft appears verbatim in a tool result. No invented or rounded
+   numbers. In addition, every claim about this week's work (shipped, merged, in
+   progress, next) and every claim about Sev-1s or blockers, including "no Sev-1
+   issues", must be backed by a get_activity result in the source data. If
+   get_activity was not called, such claims fail this check. Past updates are
+   history: a figure or progress taken from them and presented as current fails.
 3. STATUS IS EVIDENCE-BACKED AND GATE-SAFE. A Green status requires that the pulled
    project data shows no open Sev-1 issue and no launch_hold flag. A colour fails ONLY
    when the data contradicts it. Do not fail a colour because you would have chosen

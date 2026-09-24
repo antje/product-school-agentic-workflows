@@ -67,31 +67,70 @@ def get_activity(project_id: str) -> dict:
     return {"project_id": project_id, "activity": record.get("activity", [])}
 
 
+CONFIDENTIAL_MARKERS = ("CONFIDENTIAL", "EMBARGOED")
+
+
+def _confidential_projects() -> set[str]:
+    """Project names whose roadmap section is marked confidential or embargoed."""
+    names = set()
+    for line in (FIXTURES / "roadmap.md").read_text().splitlines():
+        if line.startswith("## ") and any(m in line.upper() for m in CONFIDENTIAL_MARKERS):
+            names.add(line[3:].split("(")[0].strip().lower())
+    return names
+
+
 def search_past_updates(query: str = "") -> dict:
     """Search previous status updates and decisions for tone and precedent (the
     memory/retrieval surface).
 
-    Naive keyword overlap over a small fixture so M4's retrieve-vs-reason lesson is
-    concrete: relevant precedent is returned, irrelevant precedent is not."""
+    Memory and context plan, section 3: grade and rerank what comes back.
+    - Grading: records about a confidential or embargoed project are dropped, and a
+      query with no match returns "no precedent found" instead of a fallback.
+    - Reranking: newest first, and every result is labelled as history."""
     query = (query or "").lower()
     corpus = _load_json("past-updates.json") + _load_json("decision-log.json")
+    hidden = _confidential_projects()
+    corpus = [u for u in corpus if u.get("project", "").lower() not in hidden]
     terms = {t for t in query.replace("#", " ").split() if len(t) > 2}
+    # Routing: a project ID in the query (P-NORTH) searches by that project's name,
+    # because past updates are written by name, not by ID.
+    for pid, rec in _load_json("projects.json").items():
+        if pid.lower() in terms:
+            terms.add(rec.get("name", "").split("(")[0].strip().lower())
     hits = []
     for u in corpus:
         haystack = f"{u.get('project','')} {u.get('summary','')} {u.get('theme','')}".lower()
         if terms and any(term in haystack for term in terms):
             hits.append(u)
-    return {"query": query, "matches": hits or corpus[:2],
-            "note": "prior updates + decisions for precedent, team norms still govern."}
+    if not hits:
+        return {"query": query, "matches": [], "note": "no precedent found"}
+    hits.sort(key=lambda u: u.get("week") or u.get("date") or "", reverse=True)
+    return {"query": query, "matches": hits,
+            "note": "HISTORY, not this week's data: use for tone and precedent only. "
+                    "Never report a figure or progress from here as current."}
 
 
 def get_roadmap(query: str = "") -> dict:
-    """Return the roadmap. Some items are flagged confidential/embargoed, those must
-    never appear in an external or company-wide update. `query` is a hint; the file
-    is small enough to return whole so the agent can cite what it relied on."""
+    """Return the shareable roadmap. Memory and context plan, section 3:
+    - Grading: sections marked CONFIDENTIAL or EMBARGOED are removed before the text
+      reaches the model, so they are never on the desk.
+    - Routing: if the query matches a section heading, return only that section."""
     text = (FIXTURES / "roadmap.md").read_text()
-    return {"query": query, "roadmap": text,
-            "warning": "items marked CONFIDENTIAL must not be shared outside the core team."}
+    sections, current = [], None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            current = [line]
+            sections.append(current)
+        elif current is not None:
+            current.append(line)
+    shareable = [sec for sec in sections
+                 if not any(m in sec[0].upper() for m in CONFIDENTIAL_MARKERS)]
+    withheld = len(sections) - len(shareable)
+    terms = {t for t in (query or "").lower().replace("-", " ").split() if len(t) > 2}
+    routed = [sec for sec in shareable if any(t in sec[0].lower() for t in terms)]
+    chosen = routed or shareable
+    return {"query": query, "roadmap": "\n\n".join("\n".join(sec).strip() for sec in chosen),
+            "note": f"{withheld} confidential or embargoed section(s) withheld by the tool."}
 
 
 def get_norms(query: str = "") -> dict:

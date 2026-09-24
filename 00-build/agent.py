@@ -197,6 +197,14 @@ def run(which: str = "happy", force: bool = False) -> None:
     print(f"task id: {tid}")
     print(task["body"])
 
+    # Grounding probe (memory and context plan): CORTEX_WITHHOLD=get_activity drops a
+    # tool from this run, so you can watch what Cortex does without that source.
+    withheld = [t.strip() for t in os.environ.get("CORTEX_WITHHOLD", "").split(",") if t.strip()]
+    schemas = [t for t in TOOL_SCHEMAS if t["function"]["name"] not in withheld]
+    if withheld:
+        banner(f"PROBE, withholding {', '.join(withheld)} for this run. "
+               f"Cortex cannot pull it.")
+
     system = CORTEX_SYSTEM
     if os.environ.get("CORTEX_SABOTAGE") == "1":
         banner("SABOTAGE ON (demo): the drafter is told to invent a date and a metric "
@@ -211,6 +219,7 @@ def run(which: str = "happy", force: bool = False) -> None:
     revisions = 0
     last_draft = ""
     seen_calls: set[str] = set()   # (tool, args) already made this run: a repeat is "stuck"
+    pulled: set[str] = set()       # tools that returned data (no error) this run
     tool_errors = 0                # consecutive tool errors: three in a row is "stuck"
 
     for step in range(1, MAX_ITERATIONS + 1):
@@ -222,7 +231,7 @@ def run(which: str = "happy", force: bool = False) -> None:
             return
 
         resp = client.chat.completions.create(
-            model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
+            model=MODEL, messages=messages, tools=schemas)
         bounds.add(resp.usage)
         msg = resp.choices[0].message
 
@@ -244,8 +253,11 @@ def run(which: str = "happy", force: bool = False) -> None:
                     return
                 seen_calls.add(key)
 
-                result = tools.TOOLS[fn](**args)
+                result = (tools.TOOLS[fn](**args) if fn not in withheld
+                          else {"error": "tool_unavailable", "tool": fn})
                 source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
+                if "error" not in result:
+                    pulled.add(fn)
                 print(f"\n[step {step}] TOOL {fn}({args})")
                 print(f"          -> {json.dumps(result)[:300]}")
                 messages.append({"role": "tool", "tool_call_id": call.id,
@@ -289,6 +301,18 @@ def run(which: str = "happy", force: bool = False) -> None:
         proposed = msg.content or ""
         last_draft = proposed
         print(f"\n[step {step}] PROPOSED OUTPUT:\n{proposed}")
+
+        # Memory and context plan, section 3, self-verification in code: a status
+        # update is grounded in this week's activity or it does not go out. If
+        # activity was never pulled, nothing in the draft about progress or Sev-1s can
+        # be verified, so escalate instead of asking the critic to judge it.
+        if "get_activity" not in pulled and not proposed.lstrip().startswith("ESCALATE"):
+            reason = ("required source not pulled: get_activity. Progress and Sev-1 "
+                      "status cannot be verified, so the draft is held")
+            banner(f"ESCALATE, {reason}. Run cost ≈ ${bounds.cost:.4f}")
+            emit_deliverable(which, proposed, accepted=False,
+                             reason=reason, cost=bounds.cost)
+            return
 
         banner("CRITIC, independent validation")
         verdict = review(client, CRITIC_MODEL, proposed, "\n".join(source_log))
