@@ -54,7 +54,7 @@ Stop and ask me at every decision."* If your assistant can't read files (plain C
 
 | # | Deliverable | Module | Status | File |
 |---|---|---|---|---|
-| 1 | **Working agent demo** (real run screenshots; link optional) | Built across labs | ◐ 2 of 6 screenshots (M2, M3) | `06-autonomy/prototype.md` |
+| 1 | **Working agent demo** (real run screenshots; link optional) | Built across labs | ◐ 3 of 6 screenshots (M2 to M4) | `06-autonomy/prototype.md` |
 | 2 | **Loop Spec** | M2 | ✅ | `02-loop-design/loop-spec.md` |
 | 3 | **Orchestration Map** | M3 | ✅ | `03-orchestration/orchestration-map.md` |
 | 4 | **Insights: build process** | M6 | ☐ | `06-autonomy/build-insights.md` |
@@ -67,7 +67,7 @@ Stop and ask me at every decision."* If your assistant can't read files (plain C
 | M1 The Agent Line | `01-agent-line/agent-line-map.md`: 11 decisions scored on reversibility, blast radius, measurability; 4 below, 3 HITL, 4 above; pressure-tested | ✅ committed |
 | M2 Loop Engineering | `02-loop-design/loop-spec.md`: hook with cron backup, definition of done, 11 detectable stop conditions, state and components; build edited to match and re-run | ✅ committed |
 | M3 Orchestration | `03-orchestration/orchestration-map.md`: split for one reason (the validator), single + one subagent, five-check critic with a tiered fail action and cap 2, measured cost and latency budget; critic rebuilt and shown rejecting a sabotaged draft and passing a clean one | ✅ committed |
-| M4 Context & Memory | `04-memory-context/memory-and-context.md` | ☐ |
+| M4 Context & Memory | `04-memory-context/memory-and-context.md`: week-of-2026-07-06 data pack ingested; per-source retrieve or include with a deciding factor (roadmap flipped to retrieve on citation grounds); retrieval moves per source; four memory stores with TTLs and four risks; build grounds or escalates, shown on a grounded run and a withheld-activity probe | ✅ committed |
 | M5 Bounds & Evals | `05-bounds-evals/bounds-and-evals.md` | ☐ |
 | M6 Autonomy | `06-autonomy/` | ☐ |
 
@@ -77,9 +77,9 @@ Cortex is a chief-of-staff for a product team: it pulls project state and activi
 
 ## Build & demo
 
-- **How you built it:** Claude Code, directed from each module's `LAB.md`. The starter in `00-build/` runs on Python 3.14 in a local venv against the OpenAI API (`gpt-4o-mini`). Build changes so far: M2 rewrote the loop's exits in `agent.py` and the finish instructions in `prompts.py` to match the Loop Spec, and added dedupe by task ID; M3 rewrote the critic to five checks with a pass rule, added a tiered fail action (a commitment or leak escalates at once), moved the critic to `gpt-4o` via `CORTEX_CRITIC_MODEL`, and added a `CORTEX_SABOTAGE` demo switch for producing a bad draft.
+- **How you built it:** Claude Code, directed from each module's `LAB.md`. The starter in `00-build/` runs on Python 3.14 in a local venv against the OpenAI API (`gpt-4o-mini`). Build changes so far: M2 rewrote the loop's exits in `agent.py` and the finish instructions in `prompts.py` to match the Loop Spec, and added dedupe by task ID; M3 rewrote the critic to five checks with a pass rule, added a tiered fail action (a commitment or leak escalates at once), moved the critic to `gpt-4o` via `CORTEX_CRITIC_MODEL`, and added a `CORTEX_SABOTAGE` demo switch for producing a bad draft; M4 ingested a refreshed data pack, made the roadmap and precedent tools withhold confidential items and grade what they return, extended the critic to progress and Sev-1 claims, added a code gate that escalates any draft built without this week's activity, and added a `CORTEX_WITHHOLD` probe switch.
 - **Demo link:** _[optional shareable URL]_
-- **Run screenshots:** 2 of 6 so far, in `06-autonomy/screenshots/`, linked from `06-autonomy/prototype.md`
+- **Run screenshots:** 3 of 6 so far, in `06-autonomy/screenshots/`, linked from `06-autonomy/prototype.md`
 
 ## Where it sits on the Trust Ladder
 
