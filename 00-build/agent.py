@@ -29,7 +29,9 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import sys
+import time
 from pathlib import Path
 
 from openai import OpenAI
@@ -51,8 +53,12 @@ MODEL = os.environ.get("CORTEX_MODEL", "gpt-4o-mini")
 CRITIC_MODEL = os.environ.get("CORTEX_CRITIC_MODEL", MODEL)
 MAX_ITERATIONS = int(os.environ.get("CORTEX_MAX_ITERATIONS", "8"))
 MAX_REVISIONS = int(os.environ.get("CORTEX_MAX_REVISIONS", "2"))
-COST_CAP_USD = float(os.environ.get("CORTEX_COST_CAP_USD", "0.50"))
-MAX_QUEUE_ITEMS = int(os.environ.get("CORTEX_MAX_QUEUE_ITEMS", "10"))
+COST_CAP_USD = float(os.environ.get("CORTEX_COST_CAP_USD", "0.05"))
+MAX_QUEUE_ITEMS = int(os.environ.get("CORTEX_MAX_QUEUE_ITEMS", "5"))
+# Bounds and evals, section 1: wall clock per run, per model call, and a daily spend cap.
+RUN_TIMEOUT_S = float(os.environ.get("CORTEX_TIMEOUT_S", "60"))
+CALL_TIMEOUT_S = float(os.environ.get("CORTEX_CALL_TIMEOUT_S", "20"))
+DAILY_CAP_USD = float(os.environ.get("CORTEX_DAILY_CAP_USD", "2.00"))
 # Rough $ per 1M tokens for your chosen model, set to match its pricing.
 PRICE_IN = float(os.environ.get("CORTEX_PRICE_IN_PER_M", "0.15"))
 PRICE_OUT = float(os.environ.get("CORTEX_PRICE_OUT_PER_M", "0.60"))
@@ -112,6 +118,40 @@ OUTPUT_DIR = Path(__file__).parent / "run-output"
 
 
 HANDLED_PATH = OUTPUT_DIR / "handled-tasks.json"
+SPEND_PATH = OUTPUT_DIR / "spend.json"
+# Kill switch: while this file exists, no run starts and a running loop halts at
+# its next iteration. `touch 00-build/KILL` to stop Cortex; delete it to resume.
+KILL_PATH = Path(__file__).parent / "KILL"
+
+# Brief screen (agent line row 0): instruction patterns that mark a pasted brief as
+# a prompt injection. Checked in code before any model call.
+INJECTION_PATTERNS = [
+    r"ignore (all )?(previous|prior|your) (rules|instructions|norms)",
+    r"system override", r"admin mode", r"do not escalate",
+    r"pre-?authori[sz]ed", r"you are now authori[sz]ed",
+    r"\bpost\b[^.\n]{0,80}\b(right now|immediately|now)\b",
+    r"\bcommit\b[^.\n]{0,40}\b(date|ga)\b",
+]
+
+
+def screen_brief(body: str) -> list[str]:
+    """Return the injection patterns a brief matches (empty list = clean)."""
+    return [m.group(0) for pat in INJECTION_PATTERNS
+            for m in [re.search(pat, body, re.IGNORECASE)] if m]
+
+
+def spent_today() -> float:
+    if SPEND_PATH.exists():
+        return json.loads(SPEND_PATH.read_text()).get(dt.date.today().isoformat(), 0.0)
+    return 0.0
+
+
+def record_spend(cost: float) -> None:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    spend = json.loads(SPEND_PATH.read_text()) if SPEND_PATH.exists() else {}
+    today = dt.date.today().isoformat()
+    spend[today] = round(spend.get(today, 0.0) + cost, 6)
+    SPEND_PATH.write_text(json.dumps(spend, indent=2))
 
 
 def task_id(task: dict) -> str:
@@ -154,6 +194,7 @@ def emit_deliverable(which: str, draft: str, *, accepted: bool,
     Runs on every exit: an accepted pass prints the FINAL update; a bound trip or
     escalation prints the LAST draft it managed to write plus why it was held.
     """
+    record_spend(cost)
     banner("FINAL STATUS UPDATE (draft, validator-approved, NOT posted)" if accepted
            else "LAST DRAFT (held, NOT posted, escalated to a human)")
     if draft.strip():
@@ -175,8 +216,17 @@ def emit_deliverable(which: str, draft: str, *, accepted: bool,
 
 
 def run(which: str = "happy", force: bool = False) -> None:
-    client = OpenAI()
+    # Kill switch and daily cap: checked before anything is spent.
+    if KILL_PATH.exists():
+        banner("KILL SWITCH ON (00-build/KILL exists). Cortex will not start.")
+        return
+    if spent_today() >= DAILY_CAP_USD:
+        banner(f"DAILY CAP hit: ${spent_today():.4f} spent today, cap ${DAILY_CAP_USD}. "
+               f"Cortex will not start until tomorrow.")
+        return
+    client = OpenAI(timeout=CALL_TIMEOUT_S, max_retries=1)
     bounds = Bounds()
+    started = time.monotonic()
     task = tools.get_task(which)
     if "error" in task:
         print(task)
@@ -195,7 +245,19 @@ def run(which: str = "happy", force: bool = False) -> None:
 
     banner(f"CORTEX RUN {run_no}, fixture: task-{which}  (drafter {MODEL}, critic {CRITIC_MODEL}, auto-queue cap {MAX_QUEUE_ITEMS} items)")
     print(f"task id: {tid}")
+    print(f"bounds: {MAX_ITERATIONS} iterations · {MAX_REVISIONS} rejections · "
+          f"${COST_CAP_USD}/run · ${DAILY_CAP_USD}/day (${spent_today():.4f} spent) · "
+          f"{RUN_TIMEOUT_S:.0f}s/run · {CALL_TIMEOUT_S:.0f}s/call")
     print(task["body"])
+
+    # Agent line row 0, enforced in code: a brief that carries instructions is a
+    # prompt injection. Escalate before any model call; nothing is drafted.
+    hits = screen_brief(task["body"])
+    if hits:
+        reason = f"prompt injection in the brief, matched {hits}. Nothing drafted"
+        banner(f"ESCALATE, {reason}. Run cost $0.0000")
+        emit_deliverable(which, "", accepted=False, reason=reason, cost=0.0)
+        return
 
     # Grounding probe (memory and context plan): CORTEX_WITHHOLD=get_activity drops a
     # tool from this run, so you can watch what Cortex does without that source.
@@ -222,7 +284,21 @@ def run(which: str = "happy", force: bool = False) -> None:
     pulled: set[str] = set()       # tools that returned data (no error) this run
     tool_errors = 0                # consecutive tool errors: three in a row is "stuck"
 
+    fail_once = {t.strip() for t in os.environ.get("CORTEX_FAIL_ONCE", "").split(",") if t.strip()}
+
     for step in range(1, MAX_ITERATIONS + 1):
+        if KILL_PATH.exists():
+            reason = "kill switch (00-build/KILL) turned on mid-run"
+            banner(f"KILL SWITCH, halting. Run cost ≈ ${bounds.cost:.4f}")
+            emit_deliverable(which, last_draft, accepted=False,
+                             reason=reason, cost=bounds.cost)
+            return
+        if time.monotonic() - started > RUN_TIMEOUT_S:
+            reason = f"run timeout ({RUN_TIMEOUT_S:.0f}s) reached"
+            banner(f"BOUND TRIPPED, {reason}. Halting and escalating to a human.")
+            emit_deliverable(which, last_draft, accepted=False,
+                             reason=reason, cost=bounds.cost)
+            return
         if bounds.over_cap():
             reason = f"cost cap ${COST_CAP_USD} hit at ${bounds.cost:.4f}"
             banner(f"BOUND TRIPPED, {reason}. Halting and escalating to a human.")
@@ -251,12 +327,21 @@ def run(which: str = "happy", force: bool = False) -> None:
                     emit_deliverable(which, last_draft, accepted=False,
                                      reason=reason, cost=bounds.cost)
                     return
-                seen_calls.add(key)
-
-                result = (tools.TOOLS[fn](**args) if fn not in withheld
-                          else {"error": "tool_unavailable", "tool": fn})
-                source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
+                if fn in fail_once:
+                    # EV-3 recovery probe: this tool fails on its first call only.
+                    fail_once.discard(fn)
+                    result = {"error": "tool_failed", "tool": fn, "retryable": True}
+                else:
+                    result = (tools.TOOLS[fn](**args) if fn not in withheld
+                              else {"error": "tool_unavailable", "tool": fn})
+                # Only a call that returned data counts toward "repeated action", so
+                # one retry after a failure is allowed (bounds and evals, EV-3).
                 if "error" not in result:
+                    seen_calls.add(key)
+                # The critic judges the data, not the retry history: a failed call is
+                # shown in the trace but kept out of the source log it reads.
+                if "error" not in result:
+                    source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
                     pulled.add(fn)
                 print(f"\n[step {step}] TOOL {fn}({args})")
                 print(f"          -> {json.dumps(result)[:300]}")

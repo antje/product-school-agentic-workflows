@@ -25,3 +25,6 @@ __pycache__/
 
 # Local tooling cache (gstack browse), not part of the build
 .gstack/
+
+# Kill switch file (touch to stop Cortex, delete to resume); never committed
+00-build/KILL

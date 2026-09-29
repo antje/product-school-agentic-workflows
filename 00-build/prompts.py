@@ -43,6 +43,8 @@ How to finish a run. End with exactly one of:
         proposed-stories status if any; every story traces to an in-scope PRD item>
   ESCALATE: <one line on why a human must take it from here>
 Always show the data you relied on so a human can check you.
+Always end a DONE with a line "Could not verify: <each claim you could not trace to a
+pulled source, or none>". Uncertainty is stated, never hidden.
 """
 
 CRITIC_SYSTEM = """\
