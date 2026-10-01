@@ -123,6 +123,12 @@ SPEND_PATH = OUTPUT_DIR / "spend.json"
 # its next iteration. `touch 00-build/KILL` to stop Cortex; delete it to resume.
 KILL_PATH = Path(__file__).parent / "KILL"
 
+
+def kill_switch_on() -> bool:
+    """Kill switch: the deployment flag CORTEX_KILL=1 (what a serverless deploy sets)
+    or the local file 00-build/KILL. Checked before a run and at every iteration."""
+    return os.environ.get("CORTEX_KILL") == "1" or KILL_PATH.exists()
+
 # Brief screen (agent line row 0): instruction patterns that mark a pasted brief as
 # a prompt injection. Checked in code before any model call.
 INJECTION_PATTERNS = [
@@ -138,6 +144,32 @@ def screen_brief(body: str) -> list[str]:
     """Return the injection patterns a brief matches (empty list = clean)."""
     return [m.group(0) for pat in INJECTION_PATTERNS
             for m in [re.search(pat, body, re.IGNORECASE)] if m]
+
+
+def out_of_scope_terms(project_id: str) -> dict[str, list[str]]:
+    """Terms a draft for `project_id` must not contain: the names of embargoed
+    projects (from the roadmap's confidential headings), and the names, IDs and
+    activity IDs of every other project (cross-project bleed)."""
+    embargoed = sorted(tools._confidential_projects())
+    others = []
+    for pid, rec in tools._load_json("projects.json").items():
+        if pid == project_id:
+            continue
+        others += [pid, rec.get("name", "").split("(")[0].strip()]
+        others += [a["id"] for a in rec.get("activity", []) if a.get("id")]
+    return {"embargoed": embargoed, "other_projects": [o for o in others if o]}
+
+
+def scope_violations(draft: str, project_id: str | None) -> list[str]:
+    if not project_id:
+        return []
+    terms = out_of_scope_terms(project_id)
+    hits = []
+    for t in terms["embargoed"] + terms["other_projects"]:
+        pattern = re.escape(t) if t.startswith("#") else r"\b" + re.escape(t) + r"\b"
+        if re.search(pattern, draft, re.IGNORECASE):
+            hits.append(t)
+    return sorted({h.lower(): h for h in hits}.values())
 
 
 def spent_today() -> float:
@@ -217,8 +249,8 @@ def emit_deliverable(which: str, draft: str, *, accepted: bool,
 
 def run(which: str = "happy", force: bool = False) -> None:
     # Kill switch and daily cap: checked before anything is spent.
-    if KILL_PATH.exists():
-        banner("KILL SWITCH ON (00-build/KILL exists). Cortex will not start.")
+    if kill_switch_on():
+        banner("KILL SWITCH ON (CORTEX_KILL=1 or 00-build/KILL). Cortex will not start.")
         return
     if spent_today() >= DAILY_CAP_USD:
         banner(f"DAILY CAP hit: ${spent_today():.4f} spent today, cap ${DAILY_CAP_USD}. "
@@ -282,13 +314,15 @@ def run(which: str = "happy", force: bool = False) -> None:
     last_draft = ""
     seen_calls: set[str] = set()   # (tool, args) already made this run: a repeat is "stuck"
     pulled: set[str] = set()       # tools that returned data (no error) this run
+    gate_flags: set[str] = set()   # open launch_hold flags and Sev-1 issues seen this run
+    run_project: str | None = None # the project the first successful get_project returned
     tool_errors = 0                # consecutive tool errors: three in a row is "stuck"
 
     fail_once = {t.strip() for t in os.environ.get("CORTEX_FAIL_ONCE", "").split(",") if t.strip()}
 
     for step in range(1, MAX_ITERATIONS + 1):
-        if KILL_PATH.exists():
-            reason = "kill switch (00-build/KILL) turned on mid-run"
+        if kill_switch_on():
+            reason = "kill switch turned on mid-run"
             banner(f"KILL SWITCH, halting. Run cost ≈ ${bounds.cost:.4f}")
             emit_deliverable(which, last_draft, accepted=False,
                              reason=reason, cost=bounds.cost)
@@ -313,6 +347,7 @@ def run(which: str = "happy", force: bool = False) -> None:
 
         if msg.tool_calls:
             messages.append(msg)
+            pending_rules: list[str] = []
             for call in msg.tool_calls:
                 fn = call.function.name
                 args = json.loads(call.function.arguments or "{}")
@@ -343,6 +378,8 @@ def run(which: str = "happy", force: bool = False) -> None:
                 if "error" not in result:
                     source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
                     pulled.add(fn)
+                    if fn == "get_project" and run_project is None:
+                        run_project = result.get("project_id")
                 print(f"\n[step {step}] TOOL {fn}({args})")
                 print(f"          -> {json.dumps(result)[:300]}")
                 messages.append({"role": "tool", "tool_call_id": call.id,
@@ -369,17 +406,26 @@ def run(which: str = "happy", force: bool = False) -> None:
 
                 # Agent line row 5a, a rule not a judgment: an open Sev-1 or a
                 # launch_hold flag means the status may never be Green and the
-                # go/no-go is escalated with the flag named.
-                if fn == "get_project" and "error" not in result:
-                    gates = [f for f in result.get("flags", []) if f == "launch_hold"]
-                    gates += [a["id"] + " (sev-1)" for a in result.get("activity", [])
-                              if a.get("severity") == "sev-1"]
-                    if gates:
-                        print(f"          !! gate flags on {args.get('project_id')}: {gates}")
-                        messages.append({"role": "user", "content":
-                            f"RULE (not negotiable): project {args.get('project_id')} has "
-                            f"{', '.join(gates)} open. The status may NOT be Green. Draft the "
-                            f"update, name the flag, and ESCALATE the go/no-go to a human."})
+                # go/no-go is escalated with the flag named. Flags come from the
+                # project record (launch_hold) and from activity (Sev-1 issues).
+                if "error" not in result and fn in ("get_project", "get_activity"):
+                    found = {f"{args.get('project_id')} launch_hold"
+                             for f in result.get("flags", []) if f == "launch_hold"}
+                    found |= {f"{a['id']} (sev-1)" for a in result.get("activity", [])
+                              if a.get("severity") == "sev-1"}
+                    new_flags = found - gate_flags
+                    if new_flags:
+                        gate_flags |= new_flags
+                        print(f"          !! gate flags: {sorted(gate_flags)}")
+                        pending_rules.append(
+                            f"RULE (not negotiable): {', '.join(sorted(gate_flags))} open. "
+                            f"The status may NOT be Green. Draft the update, name the flag, "
+                            f"and ESCALATE the go/no-go to a human.")
+            # Rule messages go after all tool results of this turn (the API requires
+            # every tool call to be answered before the next user message).
+            for rule in pending_rules:
+                messages.append({"role": "user", "content": rule})
+            pending_rules.clear()
             continue
 
         # No tool calls => Cortex produced a proposed output. Validate it.
@@ -399,6 +445,28 @@ def run(which: str = "happy", force: bool = False) -> None:
                              reason=reason, cost=bounds.cost)
             return
 
+        # Agent line row 5a, enforced in code: with a launch_hold or an open Sev-1,
+        # a draft that reports Green never reaches the critic or the queue.
+        if gate_flags and re.search(r"status[*:\s]{0,8}green", proposed, re.IGNORECASE):
+            reason = (f"draft reports Green while {', '.join(sorted(gate_flags))} "
+                      f"open. Held; the go/no-go is a human call")
+            banner(f"ESCALATE, {reason}. Run cost ≈ ${bounds.cost:.4f}")
+            emit_deliverable(which, proposed, accepted=False,
+                             reason=reason, cost=bounds.cost)
+            return
+
+        # Embargo and scope screen, in code: a draft for one project may not name an
+        # embargoed project, or another project's name, ID or issues. The critic
+        # checks this too (check 4); the reworded-injection runs showed the drafter
+        # can be talked into it, so the rule does not rest on the critic alone.
+        leaks = scope_violations(proposed, run_project)
+        if leaks:
+            reason = f"draft for {run_project} names out-of-scope items {leaks}. Held"
+            banner(f"ESCALATE, {reason}. Run cost ≈ ${bounds.cost:.4f}")
+            emit_deliverable(which, proposed, accepted=False,
+                             reason=reason, cost=bounds.cost)
+            return
+
         banner("CRITIC, independent validation")
         verdict = review(client, CRITIC_MODEL, proposed, "\n".join(source_log))
         # Estimate critic spend too.
@@ -412,8 +480,16 @@ def run(which: str = "happy", force: bool = False) -> None:
             banner(f"HITL CHECKPOINT, status update + any proposed stories queued for "
                    f"your review. Nothing posted, no commitments made. "
                    f"Run cost ≈ ${bounds.cost:.4f}")
+            reason = "validator passed"
+            if gate_flags:
+                # Agent line row 5a: with a launch hold or open Sev-1, the go/no-go
+                # is a human call, so the run escalates it explicitly in code.
+                reason = (f"validator passed; GO/NO-GO ESCALATED to a human: "
+                          f"{', '.join(sorted(gate_flags))} open")
+                banner(f"GO/NO-GO ESCALATED: {', '.join(sorted(gate_flags))} open. "
+                       f"The launch decision is yours.")
             emit_deliverable(which, proposed, accepted=True,
-                             reason="validator passed", cost=bounds.cost)
+                             reason=reason, cost=bounds.cost)
             return
 
         # Orchestration map, field 5, tiered fail action: a failed check 4 (a
