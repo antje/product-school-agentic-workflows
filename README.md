@@ -2,7 +2,7 @@
 
 > **Cortex prepares, a human commits.**
 
-My final project for Product School's **Agentic Loops for PMs** certification, one folder per module, Sep 14 to 30, 2026. **Pitch deck:** [`pitch.html`](pitch.html).
+My final project for Product School's **Agentic Loops for PMs** certification, one folder per module, Sep 14 to 30, 2026. **Pitch deck:** [antje.github.io/product-school-agentic-workflows/pitch.html](https://antje.github.io/product-school-agentic-workflows/pitch.html) (source: [`pitch.html`](pitch.html)).
 
 ## The short path
 
