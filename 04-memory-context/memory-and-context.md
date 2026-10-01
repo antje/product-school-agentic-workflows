@@ -1,10 +1,6 @@
 # Context Engineering & Memory: Cortex PM Chief-of-Staff Agent
 
 > Module 4 · Context Engineering & Memory
->
-> ✅ **What this validates:** the agent reasons on the right, safe inputs, by the end you'll have proven a context budget, per-source retrieve-vs-long-context decisions, and a memory map with risk mitigations.
->
-> 🗂️ **How the lab maps to this file:** In **Part A** (before the lecture) you don't edit this file, you rough-draft on scratch, focused on the per-source calls in **section 2** plus a quick remember/forget + "how it rots" sketch. In **Part B** (after the lecture) you complete **all five sections**; the Lab Guide's guided builder writes this file for you to copy in and commit.
 
 ## 1. Context budget
 
@@ -22,9 +18,9 @@ Measured on the week-of-2026-07-06 data pack: all five fixtures together are 8.6
 
 **Never on the desk:** other projects' records or activity, anything marked confidential or embargoed, the critic's reasoning (Cortex gets only the verdict).
 
-## 2. Retrieve vs. long-context: per source
+**The four moves, as applied.** Write: only PM-approved updates are written back to memory (section 4). Select: the priority order above, and retrieval per source (section 2). Compress: not needed yet, because a run's data fits in about 2.5k tokens; past updates get summarized only when they outgrow the budget. Isolate: the critic sees the source log and the draft, never Cortex's conversation.
 
-For each data source, decide: **retrieve** (narrow a large/changing corpus to the relevant slice) or **long-context** (just include a bounded set you can reason over).
+## 2. Retrieve vs. long-context: per source
 
 | Source | Size / volatility | Decision | Why (deciding factor) |
 |---|---|---|---|
@@ -32,7 +28,7 @@ For each data source, decide: **retrieve** (narrow a large/changing corpus to th
 | Project record (`get_project`) | one record per project, changes weekly | Retrieve, by project ID | **Volatility.** Status and flags change week to week and must be current. Only this project's record, never the whole file. |
 | Engineering activity (`get_activity`) | grows every day | Retrieve | **Volatility.** It must be current, and every claim in the update has to cite a PR or issue ID from it. |
 | Past updates and decisions (`search_past_updates`) | grows every week, unbounded | Retrieve | **Size.** History has no upper bound; only this project's precedent is useful. |
-| Roadmap (`get_roadmap`) | small (1.3 KB), holds the embargoed Orbit and Pulsar items | Retrieve (a flip: today the tool returns the file whole) | **Citation / audit.** Every roadmap claim must point to a passage marked shareable. Including the file whole puts embargoed items on the desk on every run, with nothing to show they were not used. Size alone says include; audit says retrieve. The trickiest call in this table. |
+| Roadmap (`get_roadmap`) | small (1.3 KB), holds the embargoed Orbit and Pulsar items | Retrieve (a flip: the starter tool returned the file whole) | **Citation / audit.** Every roadmap claim must point to a passage marked shareable. Including the file whole puts embargoed items on the desk on every run, with nothing to show they were not used. Size alone says include; audit says retrieve. The trickiest call in this table. |
 | Team norms (`get_norms`) | 2 KB, stable within a run | Long-context (a deliberate break from the course's worked example) | **Cost.** About 500 tokens, cheaper than any retrieval step, and the critic needs the exact rule text to cite. Flip to retrieve once the playbook outgrows a few pages. |
 
 **What Part A showed.** The probe withheld activity. Activity is big and changing: it grows every day and is the only place this week's PRs and Sev-1s live. Without it, Cortex reached for past updates, which look similar but are history. The critic caught the stale number and passed the claims that had no number in them. That result drives the retrieve calls above and the moves in section 3.
@@ -45,7 +41,7 @@ Every retrieved source gets at least one agentic move, chosen for the failure it
 |---|---|---|---|---|---|---|
 | Project record | Yes: look up only the project ID the brief names | · | · | Yes: critic check 1, the project and IDs in the draft match the pulled data | · | an update about the wrong project |
 | Activity | · | Yes: drop items from other projects or outside the reporting week | · | Yes: critic check 2, every number traced; and every progress claim or "no Sev-1" claim cites an activity item | No: it changes daily | stale or foreign progress presented as this week's; an "all clear" with nothing behind it |
-| Past updates and decisions | · | Yes: no match returns "no precedent found" (today the tool silently returns the first two records) | Yes: newest first, labelled as history | · | · | an old update passed off as this week's news |
+| Past updates and decisions | · | Yes: no match returns "no precedent found" (the starter tool silently returned the first two records) | Yes: newest first, labelled as history | · | · | an old update passed off as this week's news |
 | Roadmap | Yes: this project's section only | Yes: drop anything marked confidential or embargoed before it reaches the desk | · | Yes: critic check 4, no confidential item in the draft | Yes: daily, it changes slowly | Orbit or Pulsar leaking into an update |
 
 **Why these moves, from the Part A probe.** With activity withheld, Cortex passed off an older update ("activation moved from 37% to 39%") as this week's news. The critic caught the number, then passed a revision that kept vague progress, a next step the real activity shows was already done, and "no current Sev-1 issues" with nothing to back it. A number-only check cannot see a claim with no number in it. Hence the extended self-verification on activity, and the rerank and "no precedent found" grade on past updates.
@@ -55,7 +51,7 @@ Every retrieved source gets at least one agentic move, chosen for the failure it
 | Memory type | What Cortex stores | Scope / TTL | Who writes it |
 |---|---|---|---|
 | **Working** (in-loop) | this run's tool results, drafts, critic verdicts, spend | this run, then purged | Cortex |
-| **Episodic** (past runs) | the handled-task ledger (built in Module 2), the last approved update per project, the escalations it raised | per project; ledger 8 weeks, updates 4 weeks | Cortex writes the ledger. An update enters episodic memory only after the PM approves it |
+| **Episodic** (past runs) | the handled-task ledger (built in Module 2), the last approved update per project, the escalations it raised | per project; ledger 8 weeks (two monthly cycles, so a task resent across a month boundary is still caught), updates 4 weeks (one month of weekly updates; older precedent describes a different sprint). Both are hypotheses to check in shadow | Cortex writes the ledger. An update enters episodic memory only after the PM approves it |
 | **Semantic** (durable facts/prefs) | team norms, roadmap facts, project scope and PRD | per team; valid until a human changes it, refreshed on every data ingest | a human only. Writing a durable fact is above the agent line |
 | **Shared** (across agents) | the source log and the draft passed to the critic; the verdict JSON passed back | one run (orchestration map, field 6) | the loop runner |
 
@@ -68,9 +64,9 @@ Every retrieved source gets at least one agentic move, chosen for the failure it
 | **Drift** | a stored "last week: 41%" gets reused while this week's data says 43% | never reuse a stored figure; re-pull every run. Episodic memory supplies format and precedent, never numbers |
 | **Poisoning** | an injected brief or a rejected draft saved as "last week's update" and trusted next week | only PM-approved updates are written to episodic memory. Briefs, drafts and escalations never are |
 | **Staleness** | a reversed decision or a closed Sev-1 still sitting in memory | every stored fact carries its source date. Anything older than the reporting week is labelled history (the rerank in section 3); the newest decision wins |
-| **Confidential / retention** | the embargoed Orbit and Pulsar items; drafts left in `run-output/` | scope by project. Confidential items are filtered before they reach the desk and are never written to any store. Drafts are purged after PM review or after 30 days. The ledger stores a hash of the brief, never its text (already true) |
+| **Confidential / retention** | the embargoed Orbit and Pulsar items; drafts left in `run-output/` | scope by project. Confidential items are filtered before they reach the desk and are never written to any store. Drafts are purged after PM review or after 30 days (one month: long enough for a late review, short enough that a held draft cannot pass for current). The ledger stores a hash of the brief, never its text (already true) |
 
-Read and write scope follows the agent line: Cortex may write working memory and its own ledger; durable facts belong to a human. TTLs and scopes are enforced in code, not left as preferences.
+Read and write scope follows the agent line: Cortex may write working memory and its own ledger; durable facts belong to a human. The scopes are enforced in code today: records are keyed by project, and confidential items are stripped at the tool. The TTLs are a design, enforced in code once memory persists across runs.
 
 ## Build changes and grounding evidence
 
@@ -93,4 +89,4 @@ The plan above is a design; the agent does not read it. These changes in `00-bui
 | Activity withheld, twice | Escalated both times: "required source not pulled: get_activity. Progress and Sev-1 status cannot be verified, so the draft is held". The critic was not asked | about $0.001 |
 | `missing-data` | Escalated at step 1, unknown project, nothing drafted (the Module 2 exit, unchanged) | $0.0002 |
 
-Screenshots: `06-autonomy/screenshots/m4-grounded.png` and `m4-withheld.png`, linked from `06-autonomy/prototype.md`. Verbatim traces in the course archive, `2026-09-23/aaiac-m4-part-b-run-traces.md`.
+Screenshots: `06-autonomy/screenshots/m4-grounded.png` and `m4-withheld.png`, linked from `06-autonomy/prototype.md`. Verbatim traces: `06-autonomy/traces/m4-run-traces.md`, and `m4-part-a-traces.md` for the Part A probe.

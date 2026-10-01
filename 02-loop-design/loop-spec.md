@@ -1,11 +1,6 @@
 # Loop Spec: Cortex PM Chief-of-Staff Agent
 
-> Module 2 · Loop Engineering, ★ Deliverable 2
->
-> ✅ **What this validates:** the agent knows when to run and when to stop, by the end you'll have proven a one-page Loop Spec with a trigger, a definition of "done," and explicit stop conditions.
->
-> Your one-page blueprint for how the work you handed to the agent (M1) actually *runs*.
-> An agent is just a prompt that fires itself, this spec says when it fires, what "done" means, and what it needs to do the job. Living document; refine as the course progresses.
+> Module 2 · Loop Engineering · Deliverable 2
 
 ## 1. Trigger & loop type
 
@@ -13,11 +8,11 @@
 
 **Hook (primary).** A PM task arriving that names Cortex fires one run. The happy-path run is a hook firing: the product lead's message names the project, the PRD, the format, and the requester, and every step Cortex took was a reaction to that message. Without it Cortex would not know which project, which PRD, or that stories were wanted.
 
-**Cron (backup).** Monday 08:00, before the leadership sync, one sweep over active projects. It catches any week where no task came in, so the weekly update exists by default. It skips any project that already has a queued draft this week.
+**Cron (backup).** Monday 08:00, before the leadership sync (an assumption: the sync is Monday morning, and the hour moves with it), one sweep over active projects. It catches any week where no task came in, so the weekly update exists by default. It skips any project that already has a queued draft this week.
 
 **Ruled out.** Heartbeat: there is nothing to poll between tasks, and every wake-up costs money and produces a draft someone has to read. Goal as the outer loop: a run has a natural end (queued for approval), so there is no outcome to iterate toward. The draft, critic, revise cycle inside a run is goal-shaped and capped; it is specified under stop conditions, not as the loop type.
 
-**Idempotency.** Dedupe by message ID. If the same task ID fires the hook twice, the second run exits immediately, before any model call, and logs "duplicate of run N". The cron sweep checks the queue before drafting. Implemented: `agent.py` derives the ID from the brief and the ISO week (a real hook would carry the message's own ID), keeps a ledger in `run-output/handled-tasks.json`, and exits on a repeat; `--force` re-runs a handled task on purpose, which the labs need.
+**Idempotency.** Dedupe by message ID. If the same task ID fires the hook twice, the second run exits immediately, before any model call, and logs "duplicate of run N". The cron sweep checks the queue before drafting. Implemented: `agent.py` derives the ID from the brief and the ISO week (a real hook would carry the message's own ID), keeps a ledger in `run-output/handled-tasks.json`, and exits on a repeat; `--force` re-runs a handled task deliberately, for repeat test runs.
 
 ## 2. Goal / definition of done
 
@@ -35,7 +30,7 @@ Every stop holds the last draft in `run-output/` and names its reason. Nothing i
 | **Stuck: revision cap** | critic fails twice in one run | stop immediately, no further tool calls, log "revision cap", hold the last draft |
 | **Stuck: repeated action** | the same tool is called with the same arguments twice in one run | stop, log "no new information", hold the last draft |
 | **Stuck: tool failure** | a tool errors three times in a row | stop, log the tool and error, hold the last draft |
-| **Stuck: budget** | iteration cap (8) or spend cap ($0.50) reached | stop, log which cap, hold the last draft |
+| **Stuck: budget** | iteration cap (8) or spend cap ($0.50 here; tightened to $0.05 in Module 5) reached | stop, log which cap, hold the last draft |
 | **Escalate: unknown project** | the brief names a project that `get_project` cannot find | escalate to the requester, no draft (agent line row 0) |
 | **Escalate: injection** | the brief contains instructions rather than a request | escalate, flag as prompt injection, no draft (row 0) |
 | **Escalate: commitment demanded** | the brief asks for a date commitment, a post, or a company-wide update | draft what is safe, escalate the commitment (rows 4, 8, 9) |
@@ -55,8 +50,6 @@ Every stop holds the last draft in `run-output/` and names its reason. Nothing i
 
 ## 5. The five things a loop can lean on
 
-_`state` is always-on. `connectors` only if you already have one wired (e.g. a Jira key or Google MCP), otherwise just note it as a plan. `skills`, `subagents`, `work tree` scale with autonomy; "not needed yet, because…" is a valid answer._
-
 | Component | For Cortex |
 |---|---|
 | **Work tree** (isolated workspace per run, a git worktree) | Not needed yet: a run writes one file to `run-output/` and touches no shared code or data. Needed once Cortex edits anything two runs could collide on. |
@@ -65,11 +58,9 @@ _`state` is always-on. `connectors` only if you already have one wired (e.g. a J
 | **Subagents** (independent check when the loop can't grade itself) | The critic: a separate model call that never saw the drafting prompt. Its five checks, fail action and revision cap are defined in `03-orchestration/orchestration-map.md` (refined in Module 3). |
 | **State tracking** | As §4: per-project memory of last update, last status, handled task IDs, open flags. Implemented today: the handled-task ledger. The rest is the plan. |
 
-> Context plan (M4) and the hand-off to bounds & evals (M5) come in later modules, you'll add them to their own deliverables then, not here.
-
 ## Link to live loop
 
-`00-build/agent.py` (loop and bounds), `00-build/critic.py` (validation), `00-build/tools.py` (the tool list). Run with `python agent.py [happy|missing-data|jailbreak]`.
+`00-build/agent.py` (loop and bounds), `00-build/critic.py` (validation), `00-build/tools.py` (the tool list). Run with `python agent.py [happy|missing-data|jailbreak|vega|jailbreak-polite]`.
 
 ## Build changes and run evidence
 
@@ -81,7 +72,7 @@ The spec is a design doc and the agent does not read it, so the build was change
 | Stuck: repeated action | Not detected; the starter re-called `get_activity` on the same project three times in one run | A set of `(tool, arguments)` per run; a repeat halts with "no new information" |
 | Stuck: tool failure | Not detected | Three consecutive tool errors halt |
 | Escalate: unknown project | Left to the model | `project_not_found` from `get_project` escalates deterministically, no draft |
-| Escalate: Sev-1 or launch_hold | Left to the prompt | A `launch_hold` flag or a `sev-1` issue injects a non-negotiable rule: never Green, escalate the go/no-go naming the flag (agent line row 5a) |
+| Escalate: Sev-1 or launch_hold | Left to the prompt | A `launch_hold` flag or a `sev-1` issue injects a non-negotiable rule: never Green, escalate the go/no-go naming the flag (agent line row 5a). *Refined in Module 6:* the rule was still a prompt message, and its Sev-1 half never fired; it is now a code gate (bounds and evals, EV-7) |
 | Definition of done | DONE format did not ask for status evidence or PRD tracing | Added to the finish instructions in `CORTEX_SYSTEM` |
 | Idempotency (§1) | Nothing stopped the same task from producing two drafts | Task ID from the brief plus ISO week, ledger in `run-output/handled-tasks.json`, duplicate exits before any model call, `--force` to re-run deliberately |
 
@@ -94,8 +85,8 @@ One correction found by running: the first happy-path run after the edits halted
 - `missing-data` three times in a row: run 1 escalated ($0.0002); run 2 exited as `DUPLICATE ... already handled by run 1`, no model call, $0; run 3 with `--force` ran again.
 - Not yet observed at the time of writing: a `pass` from the critic. It rejected every draft in every run so far, on reasons that change between runs. The loop now converges on the critic's verdict; whether the critic's verdict is stable is a separate question. *Refined in Module 3:* with the critic rewritten to five checks and a pass rule, the success exit fired on the first clean run (2026-09-21, `HITL CHECKPOINT` reached).
 
-Verbatim traces: course archive, `2026-09-16/aaiac-m2-part-b-run-traces.md`.
+Verbatim traces: `06-autonomy/traces/m2-run-traces.md`.
 
 ## Diff from the Part A draft
 
-What the lecture changed: the two triggers became a hook with a cron backup, and the "is the critic cycle its own loop" question became a bounded goal loop inside the hook loop. The stop list was sorted into success, stuck, and escalate, and "nothing changed since last run" moved out of the stops and into idempotency. The stuck conditions gained detection rules; in Part A they were feelings.
+What the lecture changed: the two triggers became a hook with a cron backup, and the "is the critic cycle its own loop" question became a bounded goal loop inside the hook loop. The stop list was sorted into success, stuck, and escalate, and "nothing changed since last run" moved out of the stops and into idempotency. The stuck conditions gained detection rules; in Part A they had no test.

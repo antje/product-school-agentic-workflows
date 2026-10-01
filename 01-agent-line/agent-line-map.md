@@ -1,12 +1,8 @@
 # Agent Line Map: Cortex PM Chief-of-Staff Agent
 
 > Module 1 · The Agent Line
->
-> ✅ **What this validates:** every risky action has a clear owner, by the end you'll have proven an above/below-the-line map with HITL checkpoints, scored on reversibility, blast radius, and measurability.
 
 ## The workflow, decision by decision
-
-List every discrete decision or action in your agent's workflow, then score each one and place it **above** the line (a human owns it) or **below** (the agent owns it). Borderline calls get an HITL checkpoint.
 
 | Decision / action | Reversibility (H/M/L) | Blast radius (H/M/L) | Measurability (H/M/L) | Above / Below | HITL? |
 |---|---|---|---|---|---|
@@ -22,7 +18,7 @@ List every discrete decision or action in your agent's workflow, then score each
 | 8. Post a team-level update | L | M | H | Above | required |
 | 9. Approve a company-wide update | L | H | H | Above | required, permanently |
 
-Eleven rows rather than the starter's eight. The starter's "post an update / approve a company-wide one" bundles two risk levels, so it is rows 8 and 9. Row 0 was missing from the starter and added after the pressure test: reading the brief is Cortex's first act and its only untrusted input. Row 5 was split after the pressure test: the Sev-1 / launch_hold check is a rule, not a judgment, and rules belong in a scripted step.
+Eleven rows instead of the starter's eight. The starter's "post an update / approve a company-wide one" bundles two risk levels, so it is rows 8 and 9. Row 0 was missing from the starter and added after the pressure test: reading the brief is Cortex's first act and its only untrusted input. Row 5 was split after the pressure test: the Sev-1 / launch_hold check is a rule, not a judgment, and rules belong in a scripted step.
 
 ## Agent anatomy (sketch)
 
@@ -53,11 +49,11 @@ One sentence per decision, naming the axis that settled it.
 
 Row 5, flagging at-risk items. Read literally, the golden rule sends it to HITL: one axis is Med, and a Med that could swing gets a checkpoint. I kept it below the line, because the Med is on measurability and it concerns the flags Cortex misses rather than the ones it raises. A human can only approve what is in front of them, so a checkpoint cannot catch a flag that was never raised. HITL would add a review step with nothing to review.
 
-The pressure test showed that argument was right about the fix and wrong about the score. The dangerous miss is a specific one: an open Sev-1 or a launch_hold flag reported Green, which the team norms forbid outright. That is high blast radius, and no amount of measuring the miss rate afterwards contains it. But it is also not a judgment. The flag is in the data the tools return, and "never Green with a Sev-1 open" is a rule. So the resolution was to pull the rule out of the judgment: row 5a is a scripted check that cannot miss, row 5b is the judgment that remains, with an honest medium blast radius. The axis that settled it: **measurability**. What can be measured deterministically belongs in a workflow step, and only what cannot is left to the model.
+The pressure test showed that argument was right about the fix and wrong about the score. The dangerous miss is a specific one: an open Sev-1 or a launch_hold flag reported Green, which the team norms forbid outright. That is high blast radius, and no amount of measuring the miss rate afterwards contains it. But it is also not a judgment. The flag is in the data the tools return, and "never Green with a Sev-1 open" is a rule. So the resolution was to pull the rule out of the judgment: row 5a is a scripted check that cannot miss, row 5b is the judgment that remains, with a medium blast radius that still counts the missed-flag risk. The axis that settled it: **measurability**. What can be measured deterministically belongs in a workflow step, and only what cannot is left to the model.
 
 ## Pressure test
 
-Self-check against the three room questions, plus a cold read by a fresh model given only the framework, this map, `tools.py` and the team norms. Verbatim record in the course archive.
+Self-check against the three room questions, plus a cold read by a fresh model given only the framework, this map, `tools.py` and the team norms. Verbatim record: `06-autonomy/traces/m1-pressure-test-cold-run.md`.
 
 | Challenge | Axis | Outcome |
 |---|---|---|
@@ -66,3 +62,5 @@ Self-check against the three room questions, plus a cold read by a fresh model g
 | Row 3 measurability cannot be H while the draft carries the status line that row 4 rates L | Measurability | **Accepted as a design change, not a score change.** The status line is row 4's proposal; row 3 is the body. |
 | Rows 8 and 9 "are not Cortex decisions" because no post tool exists | · | **Rejected.** They are in the starter list, and mapping them records why the tool is absent. |
 | Incident if unsupervised: a missed Sev-1 reported Green, discovered at launch week | Blast radius | Closed by row 5a. |
+
+*Refined in Module 6:* until 2026-09-30 the build enforced row 5a only as a prompt rule plus a critic check, and the Sev-1 half never fired: the check read activity from `get_project`, which does not return it. Module 6 made row 5a the scripted step this map describes. Gate flags now come from both the project record and the activity, and a code gate holds any draft that reports Green while a launch hold or Sev-1 is open (bounds and evals, EV-7).

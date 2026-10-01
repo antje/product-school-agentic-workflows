@@ -1,10 +1,6 @@
 # Orchestration Map: Cortex PM Chief-of-Staff Agent
 
-> Module 3 · Orchestration & Subagents, ★ Deliverable 3
->
-> ✅ **What this validates:** nothing advances unchecked, by the end you'll have proven a justified topology, a roster, and a validator with a defined fail action.
->
-> Builds on your M2 Loop Spec. Only split one agent into a team when there's a real reason, coordination has a cost.
+> Module 3 · Orchestration & Subagents · Deliverable 3
 
 ## 1. Why split? (or why not)
 
@@ -17,9 +13,9 @@
 | Separation of concerns | No | Drafting and norm-following have not contaminated each other in any run: the drafts were warm and compliant at the same time. The failures so far were the critic's, not the drafter's. |
 | Parallelism | No | One task, one project, five reads that take about a second each. Nothing to run side by side. The Monday cron sweep over several projects would qualify later; it is not built. |
 | Independent validator | **Yes** | In every run the drafter called the same data Green, then Yellow, then Green, and ended each draft with `DONE` while the critic disagreed. The author cannot judge its own status call. Only a check that never saw the drafting prompt catches that. |
-| Context-window pressure | No | A full run is about 10k tokens; the fixtures fit many times over. |
+| Context-window pressure | No | A full run is about 10k to 15k tokens, estimated from its measured cost; the fixtures fit many times over. |
 
-**Verdict:** split for exactly one reason, the independent validator. Cortex stays a single agent with one subagent, the critic, a separate model call with its own context.
+**Verdict:** split for one reason only, the independent validator. Cortex stays a single agent with one subagent, the critic, a separate model call with its own context.
 
 ## 2. Topology
 
@@ -47,11 +43,11 @@
 | Critic | check the draft against five rules, return pass or fail with the failed check named | one call per draft, no loop of its own |
 | PM (human) | set status and commitment level, approve stories, own every post | above the agent line, not a loop |
 
-There is no research or reader subagent. The five read tools do that work, at a fraction of an agent's cost.
+There is no research or reader subagent. The five read tools do that work, at a fraction of an agent's cost, which rules out the delegation pattern (a lead handing a scoped pull to a helper). Parallel fan-out waits until the Monday sweep covers several projects at once.
 
 ## 4. Communication & hand-offs
 
-In-process, plain structured text. No MCP or A2A: both agents live in one process, and a shared envelope would matter only if the critic ran in another one.
+In-process, plain structured text. No MCP or A2A: both agents live in one process, and a shared envelope would matter only if the critic ran in another one. Both run on OpenAI models, so they share one vendor's blind spots; a critic from a different provider is the stronger independence, and the production plan names it as the first change if the critic's misses grow.
 
 | From | To | What passes | Form |
 |---|---|---|---|
@@ -121,4 +117,4 @@ The validator adds one `gpt-4o` call per draft, about $0.005 and 3 to 4 seconds 
 
 **Independence, confirmed.** `critic.py` builds its own two-message context: its system prompt, then the source data and the proposed output. It never receives Cortex's messages, and Cortex only receives the verdict JSON.
 
-Screenshots: `06-autonomy/screenshots/m3-critic-reject.png` and `m3-critic-pass.png`, linked from `06-autonomy/prototype.md`. Verbatim traces of all seven runs in the course archive, `2026-09-21/aaiac-m3-run-traces.md`.
+Screenshots: `06-autonomy/screenshots/m3-critic-reject.png` and `m3-critic-pass.png`, linked from `06-autonomy/prototype.md`. Verbatim traces of all seven runs: `06-autonomy/traces/m3-run-traces.md`.
