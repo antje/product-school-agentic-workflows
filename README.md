@@ -54,11 +54,11 @@ Stop and ask me at every decision."* If your assistant can't read files (plain C
 
 | # | Deliverable | Module | Status | File |
 |---|---|---|---|---|
-| 1 | **Working agent demo** (real run screenshots; link optional) | Built across labs | ◐ 5 of 6 screenshots (M2 to M5) | `06-autonomy/prototype.md` |
+| 1 | **Working agent demo** (real run screenshots; link optional) | Built across labs | ✅ 6 of 6 screenshots (M2 to M6) | `06-autonomy/prototype.md` |
 | 2 | **Loop Spec** | M2 | ✅ | `02-loop-design/loop-spec.md` |
 | 3 | **Orchestration Map** | M3 | ✅ | `03-orchestration/orchestration-map.md` |
-| 4 | **Insights: build process** | M6 | ☐ | `06-autonomy/build-insights.md` |
-| 5 | **Bounds, trust & autonomy strategy** | M6 | ☐ | `06-autonomy/production-and-autonomy.md` |
+| 4 | **Insights: build process** | M6 | ✅ | `06-autonomy/build-insights.md` |
+| 5 | **Bounds, trust & autonomy strategy** | M6 | ✅ | `06-autonomy/production-and-autonomy.md` |
 
 ## Progress
 
@@ -69,7 +69,7 @@ Stop and ask me at every decision."* If your assistant can't read files (plain C
 | M3 Orchestration | `03-orchestration/orchestration-map.md`: split for one reason (the validator), single + one subagent, five-check critic with a tiered fail action and cap 2, measured cost and latency budget; critic rebuilt and shown rejecting a sabotaged draft and passing a clean one | ✅ committed |
 | M4 Context & Memory | `04-memory-context/memory-and-context.md`: week-of-2026-07-06 data pack ingested; per-source retrieve or include with a deciding factor (roadmap flipped to retrieve on citation grounds); retrieval moves per source; four memory stores with TTLs and four risks; build grounds or escalates, shown on a grounded run and a withheld-activity probe | ✅ committed |
 | M5 Bounds & Evals | `05-bounds-evals/bounds-and-evals.md`: nine bounds with derived numbers, each enforced in code or by the tool list (a timeout, a daily cap, a kill switch and an injection screen added this module); seven-row failure register; six trajectory evals incl. recovery and jailbreak; lifecycle and replay set; jailbreak and cap-trip proofs | ✅ committed |
-| M6 Autonomy | `06-autonomy/` | ☐ |
+| M6 Autonomy | `06-autonomy/`: autonomy dial for three segments, current rung shadow with a 4-week eval gate to assisted, serverless deployment with a named owner, runbook, rollback and monitoring, ROI beyond adoption, widen rule, governance; prototype with all six screenshots; build insights. Pitch deck still to generate | ◐ files committed, deck pending |
 
 ## The agent in one sentence
 
@@ -79,11 +79,11 @@ Cortex is a chief-of-staff for a product team: it pulls project state and activi
 
 - **How you built it:** Claude Code, directed from each module's `LAB.md`. The starter in `00-build/` runs on Python 3.14 in a local venv against the OpenAI API (`gpt-4o-mini`). Build changes so far: M2 rewrote the loop's exits in `agent.py` and the finish instructions in `prompts.py` to match the Loop Spec, and added dedupe by task ID; M3 rewrote the critic to five checks with a pass rule, added a tiered fail action (a commitment or leak escalates at once), moved the critic to `gpt-4o` via `CORTEX_CRITIC_MODEL`, and added a `CORTEX_SABOTAGE` demo switch for producing a bad draft; M4 ingested a refreshed data pack, made the roadmap and precedent tools withhold confidential items and grade what they return, extended the critic to progress and Sev-1 claims, added a code gate that escalates any draft built without this week's activity, and added a `CORTEX_WITHHOLD` probe switch; M5 tightened the per-run cap to $0.05 and the queue cap to 5, and added a 60-second run timeout, a $2 daily spend cap, a `00-build/KILL` kill switch, and a code screen that escalates an injected brief before any model call.
 - **Demo link:** _[optional shareable URL]_
-- **Run screenshots:** 5 of 6 so far, in `06-autonomy/screenshots/`, linked from `06-autonomy/prototype.md`
+- **Run screenshots:** all 6, in `06-autonomy/screenshots/`, linked from `06-autonomy/prototype.md`
 
 ## Where it sits on the Trust Ladder
 
-_shadow · assisted · supervised · bounded-autonomous · autonomous, which rung today, and what eval evidence would let it climb the next one?_
+**Shadow, on real data.** On the fixtures Cortex already behaves like supervised (every output waits in the review queue), but it has never read a real Jira, GitHub or Slack source. To climb to assisted it needs 4 consecutive weekly cycles, at least 20 shadow drafts, with the status colour matching the PM's own update in at least 18 of 20, zero invented figures, the bounds-and-evals suite at threshold every week, and the "never Green with a Sev-1 open" rule moved into code with a Vega case passing. One trust incident resets the window. Details in `06-autonomy/production-and-autonomy.md`.
 
 ---
 
