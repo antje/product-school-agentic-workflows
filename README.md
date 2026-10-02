@@ -1,6 +1,6 @@
 # Cortex: PM Chief-of-Staff Agent
 
-> **Cortex prepares, a human commits.**
+![Cortex prepares, a human commits. A real run on the Vega project: tool calls, gate flags for an open Sev-1, the critic's pass, the HITL checkpoint and the go/no-go escalated to a human.](assets/cortex-banner.png)
 
 My final project for Product School's **Agentic Loops for PMs** certification, one folder per module, Sep 14 to 30, 2026. **Pitch deck:** [antje.github.io/product-school-agentic-workflows/pitch.html](https://antje.github.io/product-school-agentic-workflows/pitch.html) (source: [`pitch.html`](pitch.html)).
 
